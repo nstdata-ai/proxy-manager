@@ -64,7 +64,6 @@ services:
     image: nstdata/proxy-manager-router:latest
     container_name: proxy-manager-router
     environment:
-      - CONFIG_API_URL=https://pm-api.nstdata.ai/api/router/snapshot
       - CONFIG_API_TOKEN=<此处替换为您的 API-TOKEN>
       - REPORT_SINK=redis
       - REPORT_REDIS_KEY=proxyManager
