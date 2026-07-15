@@ -1,0 +1,47 @@
+services:
+  redis:
+    image: redis:latest
+    container_name: proxy-manager-redis
+    ports:
+      - "6379:6379"
+    restart: always
+    command: redis-server --requirepass "your_secure_password"
+
+  proxy-manager-router:
+    image: nstdata/proxy-manager-router:latest
+    container_name: proxy-manager-router
+    environment:
+      - CONFIG_API_URL=https://pm-api.nstdata.ai/api/router/snapshot
+      - CONFIG_API_TOKEN=<API-TOKEN>
+      - REPORT_SINK=redis
+      - REPORT_REDIS_KEY=proxyManager
+      - REDIS_URL=redis://:your_secure_password@redis:6379/0
+    depends_on:
+      - redis
+    restart: always
+
+  proxy-manager-gateway:
+    image: nstdata/proxy-manager-gateway:latest
+    container_name: proxy-manager-gateway
+    ports:
+      - "24125:24125"
+    configs:
+      - source: gateway_config
+        target: /app/config.yaml
+    depends_on:
+      - proxy-manager-router
+    restart: always
+
+configs:
+  gateway_config:
+    content: |
+      server:
+        bind: "0.0.0.0:24125"
+      logs:
+        level: "info"
+        format: "compact"
+        file_enabled: false
+        console_enabled: true
+      backend:
+        version: "grpc_v2"
+        address: "grpc://proxy-manager-router:3050"
