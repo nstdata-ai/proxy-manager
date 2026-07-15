@@ -1,7 +1,7 @@
 # ProxyManager
 
-[![](https://img.shields.io/docker/v/nstdata/proxy-manager-gateway?color=blue&logo=docker&logoColor=white&label=gateway)](https://hub.docker.com/r/nstdata/proxy-manager-gateway)
-[![](https://img.shields.io/docker/v/nstdata/proxy-manager-router?color=blue&logo=docker&logoColor=white&label=router)](https://hub.docker.com/r/nstdata/proxy-manager-router)
+[![](https://img.shields.io/docker/v/nstdata/proxy-manager-gateway?logo=docker&label=gateway)](https://hub.docker.com/r/nstdata/proxy-manager-gateway)
+[![](https://img.shields.io/docker/v/nstdata/proxy-manager-router?logo=docker&label=gateway)](https://hub.docker.com/r/nstdata/proxy-manager-router)
 
 [English](README.md)
 
