@@ -5,12 +5,12 @@
 
 [中文版](README_zh.md)
 
-ProxyManager is a high-performance, visually-managed proxy and routing management system designed for developers. It seamlessly integrates a powerful underlying proxy gateway (Gateway) with a dynamic routing engine (Router).
+ProxyManager is a high-performance, visually-managed proxy and routing management system designed for developers. It seamlessly integrates a powerful underlying proxy gateway (Gateway) with a dynamic routing engine (Router). This repository contains deployment documentation and a Compose example; it does not contain the complete Router/Gateway implementation.
 
 To meet the needs of different business scenarios, we provide **two product forms**:
 
 1. ☁️ **Pure Cloud-Hosted Version (Pay-As-You-Go)**: **Out of the box with no deployment required.** Traffic is fully and intelligently scheduled by the cloud, suitable for developers who want quick integration and zero O&M costs. For more details, please visit [nstproxy.com](http://nstproxy.com).
-2. 🔒 **Private Node Deployment Version (Contents of this Repository)**: Suitable for enterprises that are extremely sensitive to data privacy, or wish to leverage their own servers' bandwidth and environment. The control plane is managed in the cloud, while the data plane flows entirely locally.
+2. 🔒 **Private Node Deployment Version (Contents of this Repository)**: Suitable for enterprises that are extremely sensitive to data privacy, or wish to leverage their own servers' bandwidth and environment. Router and Gateway run in your environment and use a cloud control plane. Review the selected image version and configuration to establish the actual traffic and reporting paths.
 
 > **⚠️ Note**: The following documentation in this repository is exclusively for the **Private Node Deployment Version**. Before running this system, you must first obtain an `API-TOKEN` issued by the official team.
 
@@ -18,10 +18,10 @@ To meet the needs of different business scenarios, we provide **two product form
 
 ## 🏗️ Architecture and Privacy Protection (Private Node Version)
 
-If you choose to deploy a private node, the system will adopt a secure architecture of **"Cloud Control Plane + Fully Private Data Plane"**:
+If you choose to deploy a private node, the system will adopt a secure architecture of **"Cloud Control Plane + Deployed Router/Gateway Nodes"**:
 
-1. **Cloud Console (Configuration Management Only)**: You can centrally configure proxy rules, routing distribution, TLS fingerprint spoofing, etc., through our user-friendly Web interface. The cloud system is only responsible for delivering configuration files to your nodes.
-2. **Local Node Operation (Absolute Traffic Isolation)**: You deploy the Router & Gateway nodes on your own servers. The Router periodically synchronizes the latest policy configurations from the backend via API and instructs the Gateway to process actual traffic. **All business proxy traffic flows entirely within your local environment and will never pass through our cloud services!**
+1. **Cloud Console**: You can centrally configure proxy rules, routing distribution, TLS fingerprint spoofing, etc., through our user-friendly Web interface. The cloud console delivers configuration to the nodes.
+2. **Local Node Operation**: You deploy the Router & Gateway nodes on your own servers. The Router periodically synchronizes the latest policy configurations from the backend via API and instructs the Gateway to process actual traffic. Traffic destinations and reporting flows depend on the configured routing rules and sinks; this deployment example alone does not establish complete traffic isolation.
 
 ---
 
@@ -30,13 +30,13 @@ If you choose to deploy a private node, the system will adopt a secure architect
 1. **Unified Access for Complex Protocols**: Automatically identifies and processes HTTP, SOCKS5, and HAProxy traffic on a **single listening port**.
 2. **Anti-Scraping and Fingerprint Spoofing**: Automatically simulates real browser TLS/HTTP fingerprints, supporting blocking or caching in HTTPS Man-In-The-Middle (MITM) scenarios.
 3. **Intelligent Routing Decisions**: Dynamically determines the flow of traffic (e.g., direct connection, headless browser, proxy pool) based on dimensions such as domain name, user identity, and task type.
-4. **Full-Link Observability**: Based on the Router's powerful real-time traffic reporting, achieves 100% mastery of the status of every connection and request.
+4. **Full-Link Observability**: Based on the Router's powerful real-time traffic reporting, provides connection and request events according to the reporting configuration.
 
 ---
 
 ## 📦 Private Node Deployment Guide
 
-Provides an out-of-the-box Docker Compose setup for rapid deployment.
+The Compose file is an example. Before production deployment, verify image versions/digests and authorization.
 
 ### 1. Prerequisites (Obtaining Authorization)
 **Before running, you must first obtain an `API-TOKEN`.**
@@ -48,26 +48,28 @@ Please visit our [official website (nstproxy.com)](http://nstproxy.com) or conta
 
 ### 3. Docker Compose Configuration
 
-Create a `compose.yaml` file, and fill in your `<API-TOKEN>` in the corresponding location:
+Use the checked-in `compose.yaml` or copy the example below. Set `CONFIG_API_TOKEN` through a protected environment. Generate and export `REDIS_PASSWORD` once with the following command, and retain it for restarts. The example requires 64 hexadecimal characters to keep the Redis URL unambiguous; Redis has no published host port; the Router reaches it over the Compose network.
+
+```bash
+export REDIS_PASSWORD="$(openssl rand -hex 32)"
+```
 
 ```yaml
 services:
   redis:
     image: redis:latest
     container_name: proxy-manager-redis
-    ports:
-      - "6379:6379"
     restart: always
-    command: redis-server --requirepass "your_secure_password"
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD}"]
 
   proxy-manager-router:
     image: nstdata/proxy-manager-router:latest
     container_name: proxy-manager-router
     environment:
-      - CONFIG_API_TOKEN=<REPLACE_WITH_YOUR_API_TOKEN>
+      - CONFIG_API_TOKEN=${CONFIG_API_TOKEN:?Set CONFIG_API_TOKEN}
       - REPORT_SINK=redis
       - REPORT_REDIS_KEY=proxyManager
-      - REDIS_URL=redis://:your_secure_password@redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD}@redis:6379/0
     depends_on:
       - redis
     restart: always
@@ -81,7 +83,7 @@ services:
       - source: gateway_config
         target: /app/config.yaml
     depends_on:
-      - nstdata-proxy-manager-router
+      - proxy-manager-router
     restart: always
 
 configs:
@@ -100,19 +102,30 @@ configs:
 ```
 
 ### 4. Startup and Management
-Execute the following command to start the services:
+Validate the password before starting; Compose itself only rejects missing or empty variables:
 ```bash
+case "${REDIS_PASSWORD:-}" in
+  ''|*[!0-9a-fA-F]*) printf '%s\n' 'REDIS_PASSWORD must be 64 hexadecimal characters' >&2; exit 1 ;;
+esac
+[ "${#REDIS_PASSWORD}" -eq 64 ] || {
+  printf '%s\n' 'REDIS_PASSWORD must be 64 hexadecimal characters' >&2
+  exit 1
+}
+
+docker compose config --quiet
 docker compose up -d
 ```
 Once successfully started, the node will automatically connect to the cloud API and pull the configuration. You can log in to the **[Cloud Visual Console](http://nstproxy.com)** to manage your nodes and rules.
 
+With Python 3 and Docker Compose installed, run `python3 -B -m unittest discover -s tests -v` for offline configuration checks using synthetic credentials. The checks do not start containers.
+
 ---
 
-## 📊 Advanced Features: Event Reporting Mechanism (Fully Privately Managed)
+## 📊 Event Reporting Configuration
 
-To achieve 100% mastery of the lifecycle of every proxy request, ProxyManager features a built-in powerful event reporting engine.
+Configure event reporting through `REPORT_SINK` for the image version you deploy.
 
-> **🔒 Data Security Commitment**: The official team **absolutely does not collect** any of your reported data or logs! All audit records, connection statistics, and traffic events are handled by the `REPORT_SINK` you configure yourself, and the data flows and is stored entirely within your local intranet.
+> Reporting destinations, transmitted fields and retention depend on the selected sink, image version and deployment configuration. Confirm these with the maintainer before handling sensitive traffic; no universal no-collection guarantee is established here.
 
 **Supported Reporting Channels (Configured by modifying environment variables in docker-compose):**
 - `none` / `off`: Disable reporting.
