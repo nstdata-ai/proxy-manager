@@ -18,7 +18,7 @@ Use the checked-in [compose.yaml](compose.yaml). Set `CONFIG_API_TOKEN` through 
 export REDIS_PASSWORD="$(openssl rand -hex 32)"
 ```
 
-The password must be 64 hexadecimal characters for the Redis URL. Redis has no published host port; Router reaches it through the Compose network.
+Use a 64-character hexadecimal password in this template so it can be used safely in the Redis URL. Redis has no published host port; Router reaches it through the Compose network.
 
 ```yaml
 services:
@@ -104,3 +104,7 @@ python3 -B -m unittest discover -s tests -v
 These checks render Compose with synthetic credentials and validate the password guard; they do not pull images or start services. A successful configuration check does not prove image availability, readiness or proxy routing.
 
 For image access and deployment support, contact the maintainer through [GitHub Issues](https://github.com/nstdata-ai/proxy-manager/issues). Do not include tokens or traffic records.
+
+## License
+
+The deployment configuration and documentation are available under the [MIT License](LICENSE). Router and Gateway images are distributed separately under their respective terms.

@@ -18,7 +18,7 @@
 export REDIS_PASSWORD="$(openssl rand -hex 32)"
 ```
 
-Redis URL 要求密码为64位十六进制字符。Redis 不发布宿主机端口，Router 通过 Compose 网络访问它。
+本模板使用64位十六进制密码，以便安全嵌入 Redis URL。Redis 不发布宿主机端口，Router 通过 Compose 网络访问它。
 
 ```yaml
 services:
@@ -104,3 +104,7 @@ python3 -B -m unittest discover -s tests -v
 检查使用合成凭据解析 Compose 并验证密码规则，不拉取镜像、不启动服务。配置检查通过不证明镜像可用、服务就绪或代理路由正确。
 
 镜像访问及部署问题通过 [GitHub Issues](https://github.com/nstdata-ai/proxy-manager/issues)联系维护者，不提交 Token 或流量记录。
+
+## 许可
+
+部署配置与文档采用 [MIT 许可](LICENSE)。Router 和 Gateway 镜像独立分发，适用各自的使用条款。
