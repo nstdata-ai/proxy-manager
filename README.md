@@ -1,73 +1,41 @@
-# ProxyManager
+# Nstdata Proxy Manager deployment
 
-[![](https://img.shields.io/docker/v/nstdata/proxy-manager-gateway?logo=docker&label=gateway)](https://hub.docker.com/r/nstdata/proxy-manager-gateway)
-[![](https://img.shields.io/docker/v/nstdata/proxy-manager-router?logo=docker&label=gateway)](https://hub.docker.com/r/nstdata/proxy-manager-router)
+[中文](README_zh.md)
 
-[中文版](README_zh.md)
+Docker Compose configuration for running Nstdata Router, Gateway and Redis. Router obtains configuration from the Nstdata control plane; this repository contains deployment materials, not the Router/Gateway source.
 
-ProxyManager is a high-performance, visually-managed proxy and routing management system designed for developers. It seamlessly integrates a powerful underlying proxy gateway (Gateway) with a dynamic routing engine (Router).
+## Prerequisites
 
-To meet the needs of different business scenarios, we provide **two product forms**:
+- Docker Engine and Docker Compose supporting inline `configs.content`.
+- An authorized `CONFIG_API_TOKEN` and access to the selected Router/Gateway images.
+- Image versions and traffic/reporting behavior confirmed with the service maintainer. The template uses `latest`; replace every image with reviewed version tags or digests before production use.
 
-1. ☁️ **Pure Cloud-Hosted Version (Pay-As-You-Go)**: **Out of the box with no deployment required.** Traffic is fully and intelligently scheduled by the cloud, suitable for developers who want quick integration and zero O&M costs. For more details, please visit [nstproxy.com](http://nstproxy.com).
-2. 🔒 **Private Node Deployment Version (Contents of this Repository)**: Suitable for enterprises that are extremely sensitive to data privacy, or wish to leverage their own servers' bandwidth and environment. The control plane is managed in the cloud, while the data plane flows entirely locally.
+## Configure
 
-> **⚠️ Note**: The following documentation in this repository is exclusively for the **Private Node Deployment Version**. Before running this system, you must first obtain an `API-TOKEN` issued by the official team.
+Use the checked-in [compose.yaml](compose.yaml). Set `CONFIG_API_TOKEN` through a protected local environment. Generate `REDIS_PASSWORD` once and retain it for restarts:
 
----
+```bash
+export REDIS_PASSWORD="$(openssl rand -hex 32)"
+```
 
-## 🏗️ Architecture and Privacy Protection (Private Node Version)
-
-If you choose to deploy a private node, the system will adopt a secure architecture of **"Cloud Control Plane + Fully Private Data Plane"**:
-
-1. **Cloud Console (Configuration Management Only)**: You can centrally configure proxy rules, routing distribution, TLS fingerprint spoofing, etc., through our user-friendly Web interface. The cloud system is only responsible for delivering configuration files to your nodes.
-2. **Local Node Operation (Absolute Traffic Isolation)**: You deploy the Router & Gateway nodes on your own servers. The Router periodically synchronizes the latest policy configurations from the backend via API and instructs the Gateway to process actual traffic. **All business proxy traffic flows entirely within your local environment and will never pass through our cloud services!**
-
----
-
-## 🌟 Core Capabilities
-
-1. **Unified Access for Complex Protocols**: Automatically identifies and processes HTTP, SOCKS5, and HAProxy traffic on a **single listening port**.
-2. **Anti-Scraping and Fingerprint Spoofing**: Automatically simulates real browser TLS/HTTP fingerprints, supporting blocking or caching in HTTPS Man-In-The-Middle (MITM) scenarios.
-3. **Intelligent Routing Decisions**: Dynamically determines the flow of traffic (e.g., direct connection, headless browser, proxy pool) based on dimensions such as domain name, user identity, and task type.
-4. **Full-Link Observability**: Based on the Router's powerful real-time traffic reporting, achieves 100% mastery of the status of every connection and request.
-
----
-
-## 📦 Private Node Deployment Guide
-
-Provides an out-of-the-box Docker Compose setup for rapid deployment.
-
-### 1. Prerequisites (Obtaining Authorization)
-**Before running, you must first obtain an `API-TOKEN`.**
-Please visit our [official website (nstproxy.com)](http://nstproxy.com) or contact us via Issue to purchase and obtain your exclusive authorization key.
-
-### 2. Environmental Dependencies
-- Recommended OS: Linux x86_64
-- Dependencies: Docker & Docker Compose
-
-### 3. Docker Compose Configuration
-
-Create a `compose.yaml` file, and fill in your `<API-TOKEN>` in the corresponding location:
+Use a 64-character hexadecimal password in this template so it can be used safely in the Redis URL. Redis has no published host port; Router reaches it through the Compose network.
 
 ```yaml
 services:
   redis:
     image: redis:latest
     container_name: proxy-manager-redis
-    ports:
-      - "6379:6379"
     restart: always
-    command: redis-server --requirepass "your_secure_password"
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD}"]
 
   proxy-manager-router:
     image: nstdata/proxy-manager-router:latest
     container_name: proxy-manager-router
     environment:
-      - CONFIG_API_TOKEN=<REPLACE_WITH_YOUR_API_TOKEN>
+      - CONFIG_API_TOKEN=${CONFIG_API_TOKEN:?Set CONFIG_API_TOKEN}
       - REPORT_SINK=redis
       - REPORT_REDIS_KEY=proxyManager
-      - REDIS_URL=redis://:your_secure_password@redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD}@redis:6379/0
     depends_on:
       - redis
     restart: always
@@ -81,7 +49,7 @@ services:
       - source: gateway_config
         target: /app/config.yaml
     depends_on:
-      - nstdata-proxy-manager-router
+      - proxy-manager-router
     restart: always
 
 configs:
@@ -99,57 +67,44 @@ configs:
         address: "grpc://proxy-manager-router:3050"
 ```
 
-### 4. Startup and Management
-Execute the following command to start the services:
+## Validate and start
+
+The following commands start containers. Run them only after selecting authorized images and configuring the token and password:
+
 ```bash
+case "${REDIS_PASSWORD:-}" in
+  ''|*[!0-9a-fA-F]*) printf '%s\n' 'REDIS_PASSWORD must be 64 hexadecimal characters' >&2; exit 1 ;;
+esac
+[ "${#REDIS_PASSWORD}" -eq 64 ] || {
+  printf '%s\n' 'REDIS_PASSWORD must be 64 hexadecimal characters' >&2
+  exit 1
+}
+
+docker compose config --quiet
 docker compose up -d
 ```
-Once successfully started, the node will automatically connect to the cloud API and pull the configuration. You can log in to the **[Cloud Visual Console](http://nstproxy.com)** to manage your nodes and rules.
 
----
+Gateway publishes port `24125` on all host interfaces. Apply host/network access controls appropriate to the deployment. Router connects to the control plane; this template does not establish that all traffic or telemetry stays local.
 
-## 📊 Advanced Features: Event Reporting Mechanism (Fully Privately Managed)
+## Operations
 
-To achieve 100% mastery of the lifecycle of every proxy request, ProxyManager features a built-in powerful event reporting engine.
+- Keep the token and Redis password outside version control; retain the same password across restarts.
+- The template sends reports to its Redis instance. Supported reporting sinks, fields and retention depend on the selected image version; obtain that contract before handling sensitive traffic.
+- Back up required Redis data and configuration before upgrading. Record previous image digests and restore them with the matching configuration when rolling back.
+- `docker compose down` stops and removes containers. This template defines no persistent Redis volume and does not provide a report-retention guarantee across container replacement. Configure and verify persistence if reports must survive replacement.
 
-> **🔒 Data Security Commitment**: The official team **absolutely does not collect** any of your reported data or logs! All audit records, connection statistics, and traffic events are handled by the `REPORT_SINK` you configure yourself, and the data flows and is stored entirely within your local intranet.
+## Local configuration checks
 
-**Supported Reporting Channels (Configured by modifying environment variables in docker-compose):**
-- `none` / `off`: Disable reporting.
-- `stdout`: Write to standard logs.
-- `webhook`: POST to a specified URL (Configure `REPORT_WEBHOOK_URL` and `REPORT_WEBHOOK_TOKEN`).
-- `redis`: Batch RPUSH into your local Redis (Configure `REDIS_URL` and `REPORT_REDIS_KEY`).
-- `kafka`: Write to your private Kafka cluster (Configure `REPORT_KAFKA_BROKERS` and `REPORT_KAFKA_TOPIC`).
+With Python 3 and Docker Compose installed:
 
-*Tip: Webhook, Redis, and Kafka have batch processing enabled by default. This can be adjusted via `REPORT_BATCH_SIZE` (default 128) and `REPORT_BATCH_TIMEOUT` (default 100ms).*
-
-**Reporting Structure Example:**
-```json
-[
-  {
-    "type": "stats",
-    "trace_id": "tr-001",
-    "gateway": "router-a",
-    "time": 1710000005000,
-    "payload": {
-      "router": "r1",
-      "connect_id": "tr-001",
-      "owner_id": "user-001",
-      "host": "example.com",
-      "port": 443,
-      "protocol": "tcp",
-      "incoming_bytes": 2048,
-      "outgoing_bytes": 4096,
-      "status": "SUCCESS"
-    }
-  }
-]
+```sh
+python3 -B -m unittest discover -s tests -v
 ```
 
----
+These checks render Compose with synthetic credentials and validate the password guard; they do not pull images or start services. A successful configuration check does not prove image availability, readiness or proxy routing.
 
-## 📞 Contact Us
+For image access and deployment support, contact the maintainer through [GitHub Issues](https://github.com/nstdata-ai/proxy-manager/issues). Do not include tokens or traffic records.
 
-If you encounter any issues during deployment and usage, or if you need to learn more about the **Pure Cloud-Hosted Version** and purchasing a **Commercial Authorization for the Private Version**, please contact us through the following channels:
-- Official Website: [nstproxy.com](http://nstproxy.com)
-- Submit a [GitHub Issue](https://github.com/nstdata-ai/proxy-manager/issues)
+## License
+
+The deployment configuration and documentation are available under the [MIT License](LICENSE). Router and Gateway images are distributed separately under their respective terms.
